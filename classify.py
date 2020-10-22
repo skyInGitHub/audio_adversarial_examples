@@ -33,6 +33,54 @@ from tf_logits import get_logits
 # value in CTC decoding, and can not occur in the phrase.
 toks = " abcdefghijklmnopqrstuvwxyz'-"
 
+def main_classify(input, restore_path):
+    # parser = argparse.ArgumentParser(description=None)
+    # parser.add_argument('--in', type=str, dest="input",
+    #                     required=True,
+    #                     help="Input audio .wav file(s), at 16KHz (separated by spaces)")
+    # parser.add_argument('--restore_path', type=str,
+    #                     required=True,
+    #                     help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
+    # args = parser.parse_args()
+    # while len(sys.argv) > 1:
+    #     sys.argv.pop()
+    with tf.Session() as sess:
+        if input.split(".")[-1] == 'mp3':
+            raw = pydub.AudioSegment.from_mp3(input)
+            audio = np.array([struct.unpack("<h", raw.raw_data[i:i+2])[0] for i in range(0,len(raw.raw_data),2)])
+        elif input.split(".")[-1] == 'wav' or input.split(".")[-1] == 'WAV':
+            _, audio = wav.read(input)
+        else:
+            raise Exception("Unknown file format")
+        N = len(audio)
+        new_input = tf.placeholder(tf.float32, [1, N])
+        lengths = tf.placeholder(tf.int32, [1])
+
+        with tf.variable_scope("", reuse=tf.AUTO_REUSE):
+            logits = get_logits(new_input, lengths)
+
+        saver = tf.train.Saver()
+        saver.restore(sess, restore_path)
+
+        decoded, _ = tf.nn.ctc_beam_search_decoder(logits, lengths, merge_repeated=False, beam_width=500)
+
+        # print('logits shape', logits.shape)
+        length = (len(audio)-1)//320
+        l = len(audio)
+        r = sess.run(decoded, {new_input: [audio],
+                               lengths: [length]})
+
+        print("-"*80)
+        print("-"*80)
+
+        wav_name = input.split('/')[-1]
+        print("Classification of ", wav_name)
+        print("".join([toks[x] for x in r[0].values]))
+        # print("-"*80)
+        # print("-"*80)
+
+        output_text = str("".join([toks[x] for x in r[0].values]))
+        return wav_name, output_text
 
 
 def main():
@@ -50,7 +98,7 @@ def main():
         if args.input.split(".")[-1] == 'mp3':
             raw = pydub.AudioSegment.from_mp3(args.input)
             audio = np.array([struct.unpack("<h", raw.raw_data[i:i+2])[0] for i in range(0,len(raw.raw_data),2)])
-        elif args.input.split(".")[-1] == 'wav':
+        elif args.input.split(".")[-1] == 'wav' or args.input.split(".")[-1] == 'WAV':
             _, audio = wav.read(args.input)
         else:
             raise Exception("Unknown file format")
@@ -80,4 +128,22 @@ def main():
         print("-"*80)
         print("-"*80)
 
-main()
+        output_text = "".join([toks[x] for x in r[0].values])
+        return output_text
+
+
+if __name__ == "__main__":
+
+#     parser = argparse.ArgumentParser(description=None)
+#     parser.add_argument('--in', type=str, dest="input",
+#                         required=True,
+#                         help="Input audio .wav file(s), at 16KHz (separated by spaces)")
+#     parser.add_argument('--restore_path', type=str,
+#                         required=True,
+#                         help="Path to the DeepSpeech checkpoint (ending in model0.4.1)")
+#     args = parser.parse_args()
+    
+#     output_text = main_classify(args.input, args.restore_path)
+#     print(output_text)
+
+    main()
